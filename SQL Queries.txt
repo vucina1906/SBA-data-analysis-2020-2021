@@ -1,0 +1,243 @@
+								CLEANING WITH SQL				
+
+*** First we analyse and transform sba_industry_standards table. We want to extract from column NAICS_Industry_Description and get two new column, LookUpCode and Sector.
+
+
+SELECT TOP (1000)
+  [NAICS_Industry_Description],
+  iif([NAICS_Industry_Description] like '%â€%', substring([NAICS_Industry_Description],8,2), '') LookUpCodes_if
+  --case when [NAICS_Industry_Description] like '%â€%' then substring([NAICS_Industry_Description],8,2) else'' end LookupCodes_case
+  FROM [Angelina_Frimpong].[dbo].[sba_industry_standards]
+  where [NAICS_Codes] = ' '
+
+*** After previous query we see that we are getting some empty fields that we would like to avoid so we are using subquery
+
+from (
+SELECT TOP (1000)
+  [NAICS_Industry_Description],
+  iif([NAICS_Industry_Description] like '%â€%', substring([NAICS_Industry_Description],8,2), '') LookUpCodes
+  --case when [NAICS_Industry_Description] like '%â€%' then substring([NAICS_Industry_Description],8,2) else'' end LookupCodes_case
+  FROM [Angelina_Frimpong].[dbo].[sba_industry_standards]
+  where [NAICS_Codes] = ' ') as main
+  where LookUpCodes != ' '
+
+*** Than we exctrat sector names from NAICS_Industry_Description column
+
+select * from (
+SELECT TOP (1000)
+  [NAICS_Industry_Description],
+  iif([NAICS_Industry_Description] like '%â€%', substring([NAICS_Industry_Description],8,2), '') LookUpCodes,
+  substring([NAICS_Industry_Description],CHARINDEX('€',[NAICS_Industry_Description])+3,len([NAICS_Industry_Description])) Sector
+  FROM [Angelina_Frimpong].[dbo].[sba_industry_standards]
+  where [NAICS_Codes] = ' ') as main
+  where LookUpCodes != ' '
+
+*** To avoid some newly created Sector fields contain empty characters we are using ltrim function and avoid that problem
+
+select * from (
+SELECT TOP (1000)
+  [NAICS_Industry_Description],
+  iif([NAICS_Industry_Description] like '%â€%', substring([NAICS_Industry_Description],8,2), '') LookUpCodes,
+  ltrim(substring([NAICS_Industry_Description],CHARINDEX('€',[NAICS_Industry_Description])+3,len([NAICS_Industry_Description]))) Sector
+  FROM [Angelina_Frimpong].[dbo].[sba_industry_standards]
+  where [NAICS_Codes] = ' ') as main
+  where LookUpCodes != ' '
+
+*** Now we would like to save previous query as a new table called sba_naics_sector_codes_descriptions
+
+select * into sba_naics_sector_codes_descriptions
+from (
+SELECT TOP (1000)
+  [NAICS_Industry_Description],
+  iif([NAICS_Industry_Description] like '%â€%', substring([NAICS_Industry_Description],8,2), '') LookUpCodes,
+  ltrim(substring([NAICS_Industry_Description],CHARINDEX('€',[NAICS_Industry_Description])+3,len([NAICS_Industry_Description]))) Sector
+  FROM [Angelina_Frimpong].[dbo].[sba_industry_standards]
+  where [NAICS_Codes] = ' ') as main
+  where LookUpCodes != ' '
+
+
+*** Than we are examining newly created table sba_naics_sector_codes_descriptions. We can see that still in some rows we contain more than one sectors
+so we have to insert nerw rows 
+
+insert into [dbo].[sba_naics_sector_codes_descriptions]
+  values
+  ('Sector 31 â€“ 33 â€“ Manufacturing', 32,'Manufacturing'),
+  ('Sector 31 â€“ 33 â€“ Manufacturing',33,'Manufacturing'),
+  ('Sector 44 - 45 â€“ Retail Trade',45,'Retail Trade'),
+  ('Sector 48 - 49 â€“ Transportation and Warehousing',49,'Transportation and Warehousing')
+
+*** Also we clean the row where sector is 33 
+
+update [dbo].[sba_naics_sector_codes_descriptions]
+set Sector = 'Manufacturing'
+where LookUpCodes = 31
+
+
+							EXPLORING WITH SQL
+
+
+
+*** We would like to explore and find out:
+
+***What is summary of all approved PPP loans?
+
+select count(LoanNumber) as Number_of_approved,
+sum(InitialApprovalAmount) as Approved_Amount,
+avg(InitialApprovalAmount) as Average_loan_size
+FROM [Angelina_Frimpong].[dbo].[sba_public_data]
+
+*** Now we compare year 2020 and 2021 using column DateApproved. We can see how much loans we had in 2020.
+
+select 
+year(DateApproved) as year_approved,
+count(LoanNumber) as Number_of_approved,
+sum(InitialApprovalAmount) as Approved_Amount,
+avg(InitialApprovalAmount) as Average_loan_size
+FROM [Angelina_Frimpong].[dbo].[sba_public_data]
+where year(DateApproved) = 2020
+group by year(DateApproved)
+union 
+select 
+year(DateApproved) as year_approved,
+count(LoanNumber) as Number_of_approved,
+sum(InitialApprovalAmount) as Approved_Amount,
+avg(InitialApprovalAmount) as Average_loan_size
+FROM [Angelina_Frimpong].[dbo].[sba_public_data]
+where year(DateApproved) = 2021
+group by year(DateApproved)
+
+*** Now we would like to check originating lenders to see who was giving the approvals for these loans?
+
+select 
+count(distinct OriginatingLender) OriginatingLender,
+year(DateApproved) year_approved,
+count(LoanNumber) as Number_of_approved,
+sum(InitialApprovalAmount) as Approved_Amount,
+avg(InitialApprovalAmount) as Average_loan_size
+FROM [Angelina_Frimpong].[dbo].[sba_public_data]
+where year(DateApproved) = 2020
+group by year(DateApproved)
+
+union 
+
+select 
+count(distinct OriginatingLender) OriginatingLender,
+year(DateApproved) year_approved,
+count(LoanNumber) as Number_of_approved,
+sum(InitialApprovalAmount) as Approved_Amount,
+avg(InitialApprovalAmount) as Average_loan_size
+FROM [Angelina_Frimpong].[dbo].[sba_public_data]
+where year(DateApproved) = 2021
+group by year(DateApproved)
+
+*** Our next intention is to check top 15 originating lenders by loan count, total amount and average in 2020 and 2021?
+
+select top 15
+OriginatingLender,
+count(LoanNumber) as Number_of_approved,
+sum(InitialApprovalAmount) as Approved_Amount,
+avg(InitialApprovalAmount) as Average_loan_size
+FROM [Angelina_Frimpong].[dbo].[sba_public_data]
+where year(DateApproved) = 2020
+group by OriginatingLender
+order by Approved_Amount desc
+
+
+*** Beside we checked how were the lenders we would like to analyse the industry that were getting these amounts? We are joining sba_public_data and sba_naics_sector_codes_descriptions
+that we created before. 
+
+select top 20 d.Sector,
+count(LoanNumber) as Number_of_approved,
+sum(InitialApprovalAmount) as Approved_Amount,
+avg(InitialApprovalAmount) as Average_loan_size
+FROM [Angelina_Frimpong].[dbo].[sba_public_data] as p
+inner join [dbo].[sba_naics_sector_codes_descriptions] as d
+on left(p.NAICSCode,2)=d.LookUpCodes
+where year(DateApproved) = 2020
+group by d.Sector
+order by Approved_Amount desc
+
+*** In previous query we are getting huge numbers that are hard to comprhend and use for analysis. We would like to make it more obvious so we will convert it to 
+percentage. We we do CTE on previous query to achieve that.
+
+with cte as (
+select top 20 d.Sector,
+count(LoanNumber) as Number_of_approved,
+sum(InitialApprovalAmount) as Approved_Amount,
+avg(InitialApprovalAmount) as Average_loan_size
+FROM [Angelina_Frimpong].[dbo].[sba_public_data] as p
+inner join [dbo].[sba_naics_sector_codes_descriptions] as d
+on left(p.NAICSCode,2)=d.LookUpCodes
+where year(DateApproved) = 2021
+group by d.Sector)
+select Sector,Number_of_approved,Approved_Amount,Average_loan_size,
+Approved_Amount/sum(Approved_Amount) over() * 100 as Percent_by_Amount
+from cte 
+order by Percent_by_Amount desc
+
+***Now we want to see how much of the PPP 2021 have been fully forgiven?
+
+select count(LoanNumber) as Number_of_approved,
+sum(CurrentApprovalAmount) as Current_Approved_Amount,
+avg(CurrentApprovalAmount) as Current_Average_Loan_size,
+sum(ForgivenessAmount) Amount_Forgiven,
+sum(ForgivenessAmount)/sum(CurrentApprovalAmount)*100 percent_forgiven
+
+FROM [Angelina_Frimpong].[dbo].[sba_public_data] as p
+inner join [dbo].[sba_naics_sector_codes_descriptions] as d
+on left(p.NAICSCode,2)=d.LookUpCodes
+where year(DateApproved) = 2021
+order by 3 desc
+
+*** We see that there is huge difference between 2020 and 2021 so we would like to investigate deeper and check months also. These results 
+seems logic becuase in 2020 we were facing COVID lockdown so SBA were giving much more loans to save small businesses.
+
+select 
+year(DateApproved) as Year_Approved,
+month(DateApproved) as Month_Approved,
+count(LoanNumber) as Number_of_Approved,
+sum(InitialApprovalAmount) as Total_Net_Dollars,
+avg(InitialApprovalAmount)as Average_loan_size
+from [Angelina_Frimpong].[dbo].[sba_public_data]
+group by year(DateApproved),month(DateApproved)
+order by 4 desc
+
+*** We would like to save our data that we were get using these queries so we will create a view that we will store later as a flat file, using SSIS, and connect it to Tableau for visualization.
+This flat file should contain aproximately 1.9 milion rows.
+
+create view ppp_main as 
+select
+d.Sector,
+year(DateApproved) year_approved,
+month(DateApproved) month_approved,
+OriginatingLender,
+BorrowerState,
+Race,
+Gender,
+Ethnicity,
+count(LoanNumber) Number_of_approved,
+sum(CurrentApprovalAmount) Current_Approved_Amount,
+avg(CurrentApprovalAmount) Current_Average_loan_size,
+sum(ForgivenessAmount) Amount_Forgiven,
+sum(InitialApprovalAmount) Approved_Ammount,
+avg(InitialApprovalAmount) Average_loan_size
+FROM [Angelina_Frimpong].[dbo].[sba_public_data] as p
+inner join [Angelina_Frimpong].[dbo].[sba_naics_sector_codes_descriptions] as d
+on left(p.NAICSCode,2) = d.LookUpCodes
+group by 
+d.Sector,
+year(DateApproved),
+month(DateApproved),
+OriginatingLender,
+BorrowerState,
+Race,
+Gender,
+Ethnicity
+
+
+
+
+
+
+
+
